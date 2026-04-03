@@ -2,32 +2,22 @@ clc
 clear
 close all
 
-% Aircraft data
-W = 16300/32.1850; % slug
-S = 196.1;
-b = 21.94;
-c = 9.55;
-W = 16300; %lb
-Ix = 3549; %slug-ft^2
-Iy = 58611;
-Iz = 59669;
+% Aircraft data 
+S = 196.1/10.764;  
+b = 21.94/3.281;
+c = 9.55/3.281;
+W = 16300*0.4535; % lb to kg
+Ix = 3549*157.087; %slug-ft^2 to kg/m^2
+Iy = 58611*157.087;
+Iz = 59669*157.087;
 Inertia = [Ix 0 0; 0 Iy 0; 0 0 Iz];
 CG = [0.07*c 0 0]; % CG at 7% MAC
 CP = [0.25*c 0 0]; % CP at 25% MAC
-
+delta = deg2rad(4); % radians
 M = 0.257;
-h_ft = 0; % Altitude in feet (Sea Level)
-
-h_m = h_ft * 0.3048; % Convert feet to meters
-[T_K, a_ms, P_Pa, rho_kgm3] = atmosisa(h_m);
-
-% 1 meter = 3.28084 feet
-% 1 kg/m^3 = 0.00194032 slugs/ft^3
-a_fts = a_ms * 3.28084;
-rho_slugs = rho_kgm3 * 0.00194032;
-
-U = M * a_fts;
-F104A = fixedWingAircraft('F104A',S,b,c,'PM4', 'UnitSystem', 'English (ft/s)');
+h = 0;
+[T, a, P, rho] = atmosisa(h);
+U = M * a;
 
 % aerodynamic and stability coefficients
 % Longitudinal
@@ -58,6 +48,9 @@ Cy_dr = 0.208;
 Cl_dr = 0.045;    
 Cn_dr = -0.16;
 
+%creating fixed wing object
+F104A = fixedWingAircraft('F104A',S,b,c,'PM6');
+
 F104A = setCoefficient(F104A, "CD", "Zero", CD);
 F104A = setCoefficient(F104A, "CD", "Alpha", CD_alpha);
 F104A = setCoefficient(F104A, "CL", "Zero", CL); 
@@ -73,12 +66,53 @@ F104A = setCoefficient(F104A, "Cn", "Beta", Cn_beta);
 F104A = setCoefficient(F104A, "Cn", "P", Cn_p);
 F104A = setCoefficient(F104A, "Cn", "R", Cn_r);
 
-state = fixedWingState(F104A,'UnitSystem','English (ft/s)');
+% creating aircraft properties
+Properties = aircraftProperties('MyPlane','This aircraft is used for analysis','Fighter','Version 1.0');
+F104A.Properties = Properties;
+
+% creating aircraft environment
+Environment = aircraftEnvironment("ISA",0);
+
+% creating fixed wing state
+state = fixedWingState(F104A);
 
 state.Mass = W;
 state.Inertia = Inertia;
 state.CenterOfGravity = CG;
 state.CenterOfPressure = CP;
 state.U = U;
+state.Environment = Environment;
+
+% creating fixed wing surfaces (Aileron)
+aileron = fixedWingSurface('Aileron','on','Asymmetric',[-25,25]);
+Cla = Cl_da * delta;
+Cna = Cn_da * delta;
+aileron = setCoefficient(aileron,"Cl","Zero",Cla);
+aileron = setCoefficient(aileron,"Cn","Zero",Cna);
 
 
+% creating Elevator
+elevator = fixedWingSurface('Elevator','on','Symmetric',[-25,25]);
+CLe = CL_de * delta;
+Cme = Cm_de * delta;
+elevator = setCoefficient(elevator,"CL","Zero",CLe);
+elevator = setCoefficient(elevator,"Cm","Zero",Cme);
+
+% creating Rudder 
+rudder = fixedWingSurface('Rudder','on','Symmetric',[-25,25]);
+Cyr = Cy_dr * delta;
+Clr = Cl_dr * delta;
+Cnr = Cn_dr * delta;
+rudder = setCoefficient(rudder,"CY","Zero",Cyr);
+rudder = setCoefficient(rudder,"Cl","Zero",Clr);
+rudder = setCoefficient(rudder,"Cn","Zero",Cnr);
+
+F104A.Surfaces = [aileron elevator rudder];
+
+% creating propulsion
+propulsion = fixedWingThrust('Engine1','on','Symmetric',[0 1]);
+F104A.Thrusts = propulsion;
+
+
+[F M] = forcesAndMoments(F104A,state)
+sys = nonlinearDynamics(F104A,state)
