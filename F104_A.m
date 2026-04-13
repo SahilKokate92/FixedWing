@@ -116,3 +116,4 @@ F104A.Thrusts = propulsion;
 
 [F M] = forcesAndMoments(F104A,state)
 sys = nonlinearDynamics(F104A,state)
+
